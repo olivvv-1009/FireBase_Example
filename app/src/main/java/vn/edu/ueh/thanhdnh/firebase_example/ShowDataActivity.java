@@ -1,86 +1,106 @@
+
 package vn.edu.ueh.thanhdnh.firebase_example;
 
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.widget.TextView;
 
-import androidx.activity.EdgeToEdge;
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
-import com.google.firebase.FirebaseApp;
-import com.google.firebase.firestore.EventListener;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.FirebaseFirestoreException;
-import com.google.firebase.firestore.QueryDocumentSnapshot;
-import com.google.firebase.firestore.QuerySnapshot;
+import com.google.firebase.firestore.ListenerRegistration;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 public class ShowDataActivity extends AppCompatActivity {
-    FirebaseFirestore db;
-    RecyclerView recyclerView;
-    List<User> users = new ArrayList();
+
+    private RecyclerView rvArticles;
+    private TextView tvEmpty;
+    private ArticleViewAdapter adapter;
+    private final List<Article> articleList = new ArrayList<>();
+
+    private FirebaseFirestore db;
+    private ListenerRegistration listenerRegistration;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_show_data);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
 
-        FirebaseApp.initializeApp(this);
-        //users.add(new User("default", "000"));
+        rvArticles = findViewById(R.id.rvArticles);
+        tvEmpty = findViewById(R.id.tvEmpty);
 
-        recyclerView = findViewById(R.id.reclyclerview);
-        UserViewAdapter adapter = new UserViewAdapter(getBaseContext(), users);
-        recyclerView.setLayoutManager(new LinearLayoutManager(getBaseContext()));
-        recyclerView.setAdapter(adapter);
+        rvArticles.setLayoutManager(
+                new LinearLayoutManager(this)
+        );
+
+        adapter = new ArticleViewAdapter(articleList);
+        rvArticles.setAdapter(adapter);
 
         db = FirebaseFirestore.getInstance();
-        /*db.collection("users").get().addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
-          @Override
-          public void onComplete(@NonNull Task<QuerySnapshot> task) {
-            if(task.isSuccessful()){
-              users.clear();
-              for(QueryDocumentSnapshot q : task.getResult()){
-                Map<String, Object> data = q.getData();
-                User user = new User((String)data.get("name"), (String)data.get("phone"));
-                users.add(user);
-              }
-              adapter.update(users);
-              adapter.notifyDataSetChanged();
-            }
-          }
-        });*/
-      db.collection("users").addSnapshotListener(new EventListener<QuerySnapshot>() {
-        @Override
-        public void onEvent(@Nullable QuerySnapshot snapshots, @Nullable FirebaseFirestoreException error) {
-          if (snapshots != null) {
-            users.clear();
-            for (QueryDocumentSnapshot q : snapshots) {
-              Map<String, Object> data = q.getData();
-              User user = new User((String) data.get("name"), (String) data.get("phone"));
-              users.add(user);
-            }
-            adapter.update(users);
-            adapter.notifyDataSetChanged();
-          }
+
+        listenForArticles();
+    }
+
+    private void listenForArticles() {
+        listenerRegistration = db.collection("articles")
+                .addSnapshotListener((snapshots, error) -> {
+
+                    if (error != null) {
+                        Log.e("FIRESTORE_ERROR",
+                                "Cannot load articles", error);
+
+                        tvEmpty.setVisibility(View.VISIBLE);
+                        tvEmpty.setText(
+                                "Cannot load articles: " + error.getMessage()
+                        );
+                        return;
+                    }
+
+                    if (snapshots == null) {
+                        return;
+                    }
+
+                    articleList.clear();
+
+                    for (DocumentSnapshot document : snapshots.getDocuments()) {
+                        Article article = document.toObject(Article.class);
+
+                        if (article != null) {
+                            if (article.getId() == null
+                                    || article.getId().isEmpty()) {
+                                article.setId(document.getId());
+                            }
+
+                            articleList.add(article);
+                        }
+                    }
+
+                    adapter.notifyDataSetChanged();
+
+                    boolean isEmpty = articleList.isEmpty();
+                    tvEmpty.setVisibility(
+                            isEmpty ? View.VISIBLE : View.GONE
+                    );
+
+                    if (isEmpty) {
+                        tvEmpty.setText("No articles found.");
+                    }
+                });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+
+        if (listenerRegistration != null) {
+            listenerRegistration.remove();
         }
-      });
     }
 }
